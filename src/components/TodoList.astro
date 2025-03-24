@@ -1,0 +1,199 @@
+---
+import { db, TodoItems } from 'astro:db';
+
+// Get all todo items sorted by creation date (newest first)
+const todos = await db.select().from(TodoItems).orderBy(TodoItems.createdAt, 'desc');
+---
+
+<div class="todo-container">
+  <div class="form-container">
+    <form id="todo-form">
+      <div class="input-group">
+        <input 
+          type="text" 
+          id="todo-input" 
+          placeholder="Add a new task..." 
+          required
+        />
+        <button type="submit">Add Task</button>
+      </div>
+    </form>
+    <div id="error-message" class="error-message"></div>
+  </div>
+
+  <ul id="todo-list" class="todo-list">
+    {todos.map(todo => (
+      <li class={`todo-item ${todo.completed ? 'completed' : ''}`} data-id={todo.id}>
+        <span class="todo-text">{todo.text}</span>
+        {!todo.completed && (
+          <button class="complete-btn">Complete</button>
+        )}
+      </li>
+    ))}
+  </ul>
+</div>
+
+<script>
+  // Client-side JavaScript to handle the todo list
+  const todoForm = document.getElementById('todo-form') as HTMLFormElement;
+  const todoInput = document.getElementById('todo-input') as HTMLInputElement;
+  const todoList = document.getElementById('todo-list') as HTMLUListElement;
+  const errorMessage = document.getElementById('error-message') as HTMLDivElement;
+
+  // Add event listener to form submission
+  todoForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const todoText = todoInput.value.trim();
+    if (!todoText) return;
+    
+    try {
+      errorMessage.textContent = '';
+      
+      const response = await fetch('/api/item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: todoText }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to add todo item');
+      }
+      
+      const newTodo = await response.json();
+      
+      // Create a new todo item element
+      const li = document.createElement('li');
+      li.className = 'todo-item';
+      li.dataset.id = newTodo.id.toString();
+      
+      const span = document.createElement('span');
+      span.className = 'todo-text';
+      span.textContent = newTodo.text;
+      
+      const button = document.createElement('button');
+      button.className = 'complete-btn';
+      button.textContent = 'Complete';
+      
+      // Add event listener to the complete button
+      button.addEventListener('click', () => completeTodo(newTodo.id));
+      
+      li.appendChild(span);
+      li.appendChild(button);
+      
+      // Add the new todo item to the top of the list
+      todoList.insertBefore(li, todoList.firstChild);
+      
+      // Clear the input field
+      todoInput.value = '';
+      
+    } catch (error) {
+      console.error('Error adding todo:', error);
+      errorMessage.textContent = error instanceof Error ? error.message : 'Failed to add todo item';
+    }
+  });
+  
+  // Function to mark a todo as completed
+  async function completeTodo(id: number) {
+    try {
+      errorMessage.textContent = '';
+      
+      const response = await fetch('/api/item', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to complete todo item');
+      }
+      
+      // Update the UI to mark the todo as completed
+      const todoItem = document.querySelector(`li[data-id="${id}"]`);
+      if (todoItem) {
+        todoItem.classList.add('completed');
+        
+        // Remove the complete button
+        const completeButton = todoItem.querySelector('.complete-btn');
+        if (completeButton) {
+          completeButton.remove();
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error completing todo:', error);
+      errorMessage.textContent = error instanceof Error ? error.message : 'Failed to complete todo item';
+    }
+  }
+  
+  // Add event listeners to existing complete buttons
+  document.querySelectorAll('.complete-btn').forEach(button => {
+    button.addEventListener('click', (e) => {
+      const todoItem = (e.target as HTMLElement).closest('.todo-item');
+      if (todoItem && todoItem.dataset.id) {
+        completeTodo(parseInt(todoItem.dataset.id, 10));
+      }
+    });
+  });
+</script>
+
+<style>
+  .todo-container {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+  }
+  
+  .form-container {
+    margin-bottom: 1.5rem;
+  }
+  
+  .input-group {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .error-message {
+    color: var(--error-color);
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+  }
+  
+  .todo-list {
+    list-style: none;
+  }
+  
+  .todo-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .todo-item:last-child {
+    border-bottom: none;
+  }
+  
+  .todo-text {
+    flex: 1;
+    word-break: break-word;
+  }
+  
+  .todo-item.completed .todo-text {
+    text-decoration: line-through;
+    color: var(--completed-color);
+  }
+  
+  .complete-btn {
+    background-color: var(--primary-color);
+    margin-left: 1rem;
+  }
+</style>
